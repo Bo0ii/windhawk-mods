@@ -28,7 +28,7 @@ Makes window borders invisible while preserving rounded corners.
 
 ## Contributing
 
-Found a bug or have a suggestion? [Open an issue](https://github.com/Bo0ii/windhawk-mod/issues)
+Found a bug or have a suggestion? [Open an issue](https://github.com/Bo0ii/windhawk-mods/issues)
 
 ## License
 
