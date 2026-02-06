@@ -22,9 +22,14 @@ Makes window borders invisible while keeping rounded corners.
 
 Removes the delay before the auto-hidden taskbar appears. Choose from multiple animation styles.
 
-| Elastic | Fade | Slide + Fade |
-|---------|------|--------------|
-| ![Elastic](./taskbar-autohide-instant-show/elastic.gif) | ![Fade](./taskbar-autohide-instant-show/Fade.gif) | ![Slide + Fade](./taskbar-autohide-instant-show/fade%20%2B%20slide.gif) |
+**Elastic**
+![Elastic](./taskbar-autohide-instant-show/elastic.gif)
+
+**Fade**
+![Fade](./taskbar-autohide-instant-show/Fade.gif)
+
+**Slide + Fade**
+![Slide + Fade](./taskbar-autohide-instant-show/fade%20%2B%20slide.gif)
 
 - Zero delay when mouse hits screen edge
 - 5 animation types: Slide, Elastic, Bounce, Fade, Slide + Fade
@@ -49,4 +54,4 @@ Found a bug or have a suggestion? [Open an issue](https://github.com/Bo0ii/windh
 
 ## License
 
-MIT License - Feel free to modify and distribute
+Apache License 2.0 - Free to use and modify, but you must keep the original author attribution
