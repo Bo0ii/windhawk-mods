@@ -29,7 +29,7 @@ Removes the delay before the auto-hidden taskbar appears. Choose from multiple a
 ![Fade](./taskbar-autohide-instant-show/Fade.gif)
 
 **Slide + Fade**
-![Slide + Fade](./taskbar-autohide-instant-show/fade%20%2B%20slide.gif)
+![Slide + Fade](./taskbar-autohide-instant-show/fade-slide.gif)
 
 - Zero delay when mouse hits screen edge
 - 5 animation types: Slide, Elastic, Bounce, Fade, Slide + Fade
