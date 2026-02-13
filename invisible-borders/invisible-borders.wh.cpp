@@ -2,7 +2,7 @@
 // @id              invisible-borders
 // @name            Invisible Window Borders
 // @description     Makes window borders invisible while keeping rounded corners
-// @version         1.0.0
+// @version         1.1.0
 // @author          Bo0ii
 // @github          https://github.com/Bo0ii
 // @homepage        https://github.com/Bo0ii/windhawk-mods
