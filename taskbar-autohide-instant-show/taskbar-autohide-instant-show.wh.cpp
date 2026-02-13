@@ -2,7 +2,7 @@
 // @id              taskbar-autohide-instant-show
 // @name            Taskbar Auto-Hide Instant Show
 // @description     Removes the delay before the taskbar appears with custom animation types (elastic, bounce, fade, etc.)
-// @version         2.0
+// @version         2.1
 // @author          Bo0ii
 // @github          https://github.com/Bo0ii
 // @homepage        https://github.com/Bo0ii/windhawk-mods
@@ -100,6 +100,12 @@ For all other modes, use *Show/Hide duration (ms)* to control timing.
   $description: >-
     Enable this if you use ExplorerPatcher or similar to use the old
     Windows 10 taskbar on Windows 11.
+- edgeDetection: false
+  $name: Edge detection for empty monitors
+  $description: >-
+    Enable this if the taskbar does not appear when hovering the screen
+    edge on a monitor with no visible windows. Creates a background thread
+    that polls the cursor position.
 */
 // ==/WindhawkModSettings==
 
@@ -126,6 +132,7 @@ struct {
     int unhideDelay;
     int hideDelay;
     bool oldTaskbarOnWin11;
+    bool edgeDetection;
 } g_settings;
 
 enum class WinVersion {
@@ -427,9 +434,42 @@ void WINAPI TrayUI_SlideWindow_Hook(void* pThis,
         RECT startRect;
         GetWindowRect(hWnd, &startRect);
 
-        DoCustomAnimation(hWnd, &startRect, rect, show, animGen);
+        if (show) {
+            // Suppress pre-animation flash: hide window, let the
+            // original update internal TrayUI state invisibly, then
+            // restore the start position for our custom animation.
+            LONG_PTR exStyle = GetWindowLongPtr(hWnd, GWL_EXSTYLE);
+            bool addedLayered = !(exStyle & WS_EX_LAYERED);
+            if (addedLayered)
+                SetWindowLongPtr(hWnd, GWL_EXSTYLE,
+                                 exStyle | WS_EX_LAYERED);
+            SetLayeredWindowAttributes(hWnd, 0, 0, LWA_ALPHA);
+            DwmFlush();
 
-        TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show, false);
+            TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show,
+                                        false);
+
+            // Move back to hidden start position
+            SetWindowPos(hWnd, NULL, startRect.left, startRect.top,
+                         startRect.right - startRect.left,
+                         startRect.bottom - startRect.top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+
+            // Restore window style before custom animation
+            if (addedLayered) {
+                SetWindowLongPtr(hWnd, GWL_EXSTYLE, exStyle);
+            } else {
+                SetLayeredWindowAttributes(hWnd, 0, 0, LWA_ALPHA);
+            }
+            DwmFlush();
+
+            DoCustomAnimation(hWnd, &startRect, rect, show, animGen);
+        } else {
+            DoCustomAnimation(hWnd, &startRect, rect, show, animGen);
+
+            TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show,
+                                        false);
+        }
     }
 }
 
@@ -782,6 +822,7 @@ void LoadSettings() {
     g_settings.unhideDelay = Wh_GetIntSetting(L"unhideDelay");
     g_settings.hideDelay = Wh_GetIntSetting(L"hideDelay");
     g_settings.oldTaskbarOnWin11 = Wh_GetIntSetting(L"oldTaskbarOnWin11");
+    g_settings.edgeDetection = Wh_GetIntSetting(L"edgeDetection");
 }
 
 BOOL Wh_ModInit() {
@@ -842,7 +883,9 @@ BOOL Wh_ModInit() {
 
     g_initialized = true;
 
-    StartEdgeCheckThread();
+    if (g_settings.edgeDetection) {
+        StartEdgeCheckThread();
+    }
 
     return TRUE;
 }
@@ -866,6 +909,12 @@ BOOL Wh_ModSettingsChanged(BOOL* bReload) {
     bool prevOldTaskbarOnWin11 = g_settings.oldTaskbarOnWin11;
 
     LoadSettings();
+
+    if (g_settings.edgeDetection) {
+        StartEdgeCheckThread();
+    } else {
+        StopEdgeCheckThread();
+    }
 
     *bReload = g_settings.oldTaskbarOnWin11 != prevOldTaskbarOnWin11;
 
