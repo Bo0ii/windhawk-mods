@@ -280,6 +280,19 @@ static int Lerp(int a, int b, double t) {
     return a + (int)((b - a) * t);
 }
 
+static bool UsesCustomFade(int animationType) {
+    return animationType == 3 || animationType == 4;
+}
+
+static void MakeLayeredWindowOpaqueIfNeeded(HWND hWnd) {
+    LONG_PTR exStyle = GetWindowLongPtr(hWnd, GWL_EXSTYLE);
+    if (exStyle & WS_EX_LAYERED) {
+        // Clear stale alpha from interrupted fade animations without forcing a
+        // compositor flush on latency-sensitive snap/native-slide paths.
+        SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
+    }
+}
+
 void DoCustomAnimation(HWND hWnd,
                        const RECT* startRect,
                        const RECT* endRect,
@@ -302,7 +315,7 @@ void DoCustomAnimation(HWND hWnd,
 
     bool usePosition = (animType == 1 || animType == 2 || animType == 4 ||
                         animType == 5);
-    bool useFade = (animType == 3 || animType == 4);
+    bool useFade = UsesCustomFade(animType);
 
     LONG_PTR originalExStyle = 0;
     if (useFade) {
@@ -324,8 +337,10 @@ void DoCustomAnimation(HWND hWnd,
 
     double startTime = TimerGetSeconds();
 
+    bool cancelled = false;
     for (int i = 1; i <= totalFrames; i++) {
         if (g_animationGeneration.load() != myAnimGen) {
+            cancelled = true;
             break;
         }
 
@@ -407,8 +422,10 @@ void DoCustomAnimation(HWND hWnd,
             }
         }
     }
-
-    if (usePosition) {
+    // If a newer animation superseded this one, don't snap to this older
+    // target. Still run fade cleanup below so temporary layered state doesn't
+    // leak into subsequent animations.
+    if (!cancelled && usePosition) {
         SetWindowPos(hWnd, NULL, endRect->left, endRect->top,
                      endRect->right - endRect->left,
                      endRect->bottom - endRect->top,
@@ -416,7 +433,7 @@ void DoCustomAnimation(HWND hWnd,
     }
 
     if (useFade) {
-        if (!show) {
+        if (!cancelled && !show) {
             SetLayeredWindowAttributes(hWnd, 0, 0, LWA_ALPHA);
             DwmFlush();
             SetWindowPos(hWnd, NULL, endRect->left, endRect->top,
@@ -435,7 +452,7 @@ void DoCustomAnimation(HWND hWnd,
         }
 
         // Only restore full alpha if window was already layered
-        if (show && (originalExStyle & WS_EX_LAYERED)) {
+        if (!cancelled && show && (originalExStyle & WS_EX_LAYERED)) {
             SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
         }
     }
@@ -454,23 +471,28 @@ void WINAPI TrayUI_SlideWindow_Hook(void* pThis,
                                     HMONITOR monitor,
                                     bool show,
                                     bool animate) {
-    Wh_Log(L"> show=%d animType=%d", show, g_settings.animationType);
+    int animType = g_settings.animationType;
+    // Bump generation for every SlideWindow call so non-custom paths also
+    // cancel any in-flight custom animation.
+    int animGen = ++g_animationGeneration;
+    Wh_Log(L"> show=%d animType=%d", show, animType);
 
-    if (g_settings.animationType == -1) {
+    if (animType == -1) {
         // No animation — snap to final position instantly.
+        MakeLayeredWindowOpaqueIfNeeded(hWnd);
         TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show, false);
-    } else if (g_settings.animationType == 0) {
+    } else if (animType == 0) {
         g_slideWindowSpeedup =
             show ? g_settings.showSpeedup : g_settings.hideSpeedup;
         g_slideWindowStartTime = TimerGetSeconds();
         g_slideWindowLastFrameStartTime = g_slideWindowStartTime;
         g_slideWindowThreadId = GetCurrentThreadId();
 
+        MakeLayeredWindowOpaqueIfNeeded(hWnd);
         TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show, animate);
 
         g_slideWindowThreadId = 0;
     } else {
-        int animGen = ++g_animationGeneration;
 
         RECT startRect;
         GetWindowRect(hWnd, &startRect);
@@ -497,15 +519,22 @@ void WINAPI TrayUI_SlideWindow_Hook(void* pThis,
                          SWP_NOZORDER | SWP_NOACTIVATE);
 
             // Restore window style before custom animation
+            bool customWillFade = UsesCustomFade(animType);
             if (addedLayered) {
+                if (!customWillFade) {
+                    SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
+                }
                 SetWindowLongPtr(hWnd, GWL_EXSTYLE, exStyle);
             } else {
-                SetLayeredWindowAttributes(hWnd, 0, 0, LWA_ALPHA);
+                SetLayeredWindowAttributes(hWnd, 0, customWillFade ? 0 : 255,
+                                           LWA_ALPHA);
             }
             DwmFlush();
-
             DoCustomAnimation(hWnd, &startRect, rect, show, animGen);
         } else {
+            if (!UsesCustomFade(animType)) {
+                MakeLayeredWindowOpaqueIfNeeded(hWnd);
+            }
             DoCustomAnimation(hWnd, &startRect, rect, show, animGen);
 
             TrayUI_SlideWindow_Original(pThis, hWnd, rect, monitor, show,
